@@ -1,2 +1,14 @@
 ## minimize
 A simple performance dashboard for the Nim language
+
+### Usage
+* Run ./bench_nim.sh using a cronjob - it will run the benchmarks only when a new commit has been done 
+* Add a script named "deploy" to deploy bench.html
+* Configure run_benchmarks.nim if needed
+
+### Contributing
+New benchmarks are welcome. See the existing ones as examples.
+
+Please measure only specific language feature or submodules.
+
+Benchmarks should run for few seconds only.
