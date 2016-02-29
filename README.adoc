@@ -1,0 +1,2 @@
+## minimize
+A simple performance dashboard for the Nim language
