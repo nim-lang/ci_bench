@@ -16,7 +16,7 @@ const
   bench_glob = benchmarks_dir.join_path("*.nim")
   outputdir = "website/output"
   cycles = 5
-  sleep_time = 45000 # ms
+  sleep_time = 147_000 # ms
 
 proc backup_timings() =
   for fname in walk_files(benchmarks_dir.join_path("*.csv")):
@@ -54,10 +54,11 @@ proc run_benchmarks(commitish: string) =
           timings[bench_name] = timing
 
       except:
+        echo "  Unhandled error"
         discard
 
-  echo "Sleeping"
-  sleep(sleep_time)
+    echo "Sleeping"
+    sleep(sleep_time)
 
   for n, t in timings.pairs:
     let f = open(n & ".csv", fmAppend)
