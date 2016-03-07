@@ -3,16 +3,13 @@
 
 from times import epochTime
 import json
-
-var best_time = 999.0
+from benchutils import run_bench
 
 var arr = @[1,2,3,5,6,0,7,8,9]
 for x in 1..1000:
   arr.add x
 
-for loop_cnt in 1..100:
-  let t0 = epochTime()
-
+run_bench(100):
   var j = %* [
     {
       "name": "foo",
@@ -30,9 +27,3 @@ for loop_cnt in 1..100:
   var text = $c
   var parsed = text.parseJson()
   doAssert parsed.len == 1002
-
-  let elapsed = epochTime() - t0
-  if elapsed < best_time:
-    best_time = elapsed
-
-echo best_time

@@ -14,9 +14,8 @@ import times
 const
   benchmarks_dir = "benchmarks"
   bench_glob = benchmarks_dir.join_path("*.nim")
-  outputdir = "website/output"
-  cycles = 5
-  sleep_time = 147_000 # ms
+  cycles = 20
+  sleep_time = 19_000 # ms
 
 proc backup_timings() =
   for fname in walk_files(benchmarks_dir.join_path("*.csv")):
@@ -29,23 +28,34 @@ proc restore_from_backup() =
     echo "Restoring ", fname
     copyFile(fname & ".bak", fname)
 
-proc compile_benchmarks() =
-  echo "Compiling benchmarks"
+proc list_benchmarks(): seq[string] =
+  result = @[]
   for bench_name in walk_files(bench_glob):
+    if bench_name.endswith("benchutils.nim"):
+      continue
+    result.add bench_name
+  echo "Found $# benchmarks" % $result.len
+
+proc compile_benchmarks(bench_names: seq[string]) =
+  echo "Compiling benchmarks"
+  for bench_name in bench_names:
     echo "Compiling ", bench_name
     discard execShellCmd("nim c -d:release $#" % bench_name)
 
-proc run_benchmarks(commitish: string) =
+proc run_benchmarks(commitish: string, bench_names: seq[string]) =
   var timings = initTable[string, float]()
   let tstamp = getGmTime(getTime())
 
   for cycle_cnt in 1..cycles:
     echo "Running cycle ", $cycle_cnt
-    for bench_fname in walk_files(bench_glob):
+    for bench_fname in bench_names:
       let bench_name = bench_fname[0..^5]
       echo "  Running $#" % bench_name
       let output = execProcess(bench_name)
       try:
+        for line in output.split("\n"):
+          echo "    $#" % line
+
         let timing = output.split("\n")[^2].parseFloat
         echo "    Timing ", timing
         if bench_name in timings and timings[bench_name] > timing:
@@ -65,11 +75,14 @@ proc run_benchmarks(commitish: string) =
     f.write("$#,$#,$#\n" % [$tstamp, commitish, $t])
     f.close()
 
+var commitish = "test"
+if paramCount() > 0:
+  commitish = paramStr(1)
 
-let commitish = paramStr(1)
 backup_timings()
-compile_benchmarks()
-run_benchmarks(commitish)
+let bench_names = list_benchmarks()
+compile_benchmarks(bench_names)
+run_benchmarks(commitish, bench_names)
 
 discard execShellCmd("./generate_bench_page")
 

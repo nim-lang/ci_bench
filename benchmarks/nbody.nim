@@ -2,7 +2,7 @@
 # From https://gist.github.com/idlewan/ab53b761ab1522251682
 
 import os, strutils, math
-from times import epochTime
+from benchutils import run_bench
 
 const SOLAR_MASS = 4'f64 * PI * PI
 const DAYS_PER_YEAR = 365.24'f64
@@ -105,15 +105,10 @@ proc offset_momentum(bodies: var array[0..4, Planet]) =
     bodies[0].vz = -pz / SOLAR_MASS
 
 
-let t0 = epochTime()
-var n = 1_000_000
-if paramCount() > 0:
-    n = paramStr(1).parseInt
-
-offset_momentum(bodies)
-echo formatFloat(energy(bodies), precision=9)
-for i in 1 .. n:
-    advance(bodies, 0.01)
-echo formatFloat(energy(bodies), precision=9)
-
-echo epochTime() - t0
+run_bench(1):
+  let n = 1_000_000
+  offset_momentum(bodies)
+  echo formatFloat(energy(bodies), precision=9)
+  for i in 1 .. n:
+      advance(bodies, 0.01)
+  echo formatFloat(energy(bodies), precision=9)

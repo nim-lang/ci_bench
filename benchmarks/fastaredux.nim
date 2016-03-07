@@ -3,7 +3,7 @@
 
 import os, strutils
 
-from times import epochTime
+from benchutils import run_bench
 
 const
     IM = 139968
@@ -99,9 +99,6 @@ proc randomize(amino_acid: var openarray[AminoAcid], title: string,
     line_buffer[j] = '\L'
     discard fwrite_unlocked(line_buffer[0].addr, j + 1, 1, stdout)
 
-
-
-let t0 = epochTime()
 const alu: cstring = "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTG" &
    "GGAGGCCGAGGCGGGCGGATCACCTGAGGTCAGGAGTTCGA" &
    "GACCAGCCTGGCCAACATGGTGAAACCCCGTCTCTACTAAA" &
@@ -110,45 +107,41 @@ const alu: cstring = "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTG" &
    "CCGGGAGGCGGAGGTTGCAGTGAGCCGAGATCGCGCCACTG" &
    "CACTCCAGCCTGGGCGACAGAGCGAGACTCCGTCTCAAAAA"
 
-var iub: array[0..14, AminoAcid] = [
-   ('a', 0.27, 0.0),
-   ('c', 0.12, 0.0),
-   ('g', 0.12, 0.0),
-   ('t', 0.27, 0.0),
+run_bench(1):
+  var iub: array[0..14, AminoAcid] = [
+    ('a', 0.27, 0.0),
+    ('c', 0.12, 0.0),
+    ('g', 0.12, 0.0),
+    ('t', 0.27, 0.0),
 
-   ('B', 0.02, 0.0),
-   ('D', 0.02, 0.0),
-   ('H', 0.02, 0.0),
-   ('K', 0.02, 0.0),
-   ('M', 0.02, 0.0),
-   ('N', 0.02, 0.0),
-   ('R', 0.02, 0.0),
-   ('S', 0.02, 0.0),
-   ('V', 0.02, 0.0),
-   ('W', 0.02, 0.0),
-   ('Y', 0.02, 0.0),
-]
+    ('B', 0.02, 0.0),
+    ('D', 0.02, 0.0),
+    ('H', 0.02, 0.0),
+    ('K', 0.02, 0.0),
+    ('M', 0.02, 0.0),
+    ('N', 0.02, 0.0),
+    ('R', 0.02, 0.0),
+    ('S', 0.02, 0.0),
+    ('V', 0.02, 0.0),
+    ('W', 0.02, 0.0),
+    ('Y', 0.02, 0.0),
+  ]
 
-var homo_sapiens: array[0..3, AminoAcid] = [
-   ('a', 0.3029549426680, 0.0),
-   ('c', 0.1979883004921, 0.0),
-   ('g', 0.1975473066391, 0.0),
-   ('t', 0.3015094502008, 0.0),
-]
+  var homo_sapiens: array[0..3, AminoAcid] = [
+    ('a', 0.3029549426680, 0.0),
+    ('c', 0.1979883004921, 0.0),
+    ('g', 0.1975473066391, 0.0),
+    ('t', 0.3015094502008, 0.0),
+  ]
 
 
-var n = 512
-if paramCount() > 0:
-    n = paramStr(1).parseInt
+  let n = 512
 
-repeat(cast[var array[0..286, char]](alu),
-       ">ONE Homo sapiens alu\n", n*2)
+  repeat(cast[var array[0..286, char]](alu),
+        ">ONE Homo sapiens alu\n", n*2)
 
-var random = 42
-randomize(iub, ">TWO IUB ambiguity codes\L",
-          n*3, addr random)
-randomize(homo_sapiens, ">THREE Homo sapiens frequency\L",
-          n*5, addr random)
-
-let elapsed = epochTime() - t0
-echo elapsed
+  var random = 42
+  randomize(iub, ">TWO IUB ambiguity codes\L",
+            n*3, addr random)
+  randomize(homo_sapiens, ">THREE Homo sapiens frequency\L",
+            n*5, addr random)
