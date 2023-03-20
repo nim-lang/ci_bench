@@ -1,8 +1,6 @@
 ## minimize
 A simple performance dashboard for the Nim language
 
-A live instance runs at http://nimbench.firelet.net
-
 ### Usage
 * Run ./bench_nim.sh using a cronjob - it will run the benchmarks only when a new commit has been done 
 * Add a script named "deploy" to deploy bench.html
