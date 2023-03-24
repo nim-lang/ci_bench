@@ -11,6 +11,7 @@
 <style>
 div.minichart {
     padding-left: 1em;
+    padding-top: 3px;
     margin: 1em;
     border: 1px solid #999;
     -moz-border-radius: 5px;
@@ -72,22 +73,31 @@ div.tip {
     box-shadow: 5px 5px 8px #CCC;
 }
 a.soft {
-    color: #999;
+    color: #555;
     text-decoration: none;
 }
 a.soft:hover {
-    color: #666;
+    color: #555;
 }
 .softtext {
-    color: #777;
+    color: #555;
 }
+.header {
+    text-align: center;
+}
+
 div#footer {
     text-align: center;
 }
 
 </style>
 
-<p class="softtext">Nim benchmarks execution time. Lower is better.</p>
+<p class="softtext header">Nim benchmarks execution time. Lower is better.
+<br/>
+Click on a bar to load the related commit on Nim devel.
+<br/>
+Click on the benchmark title to see the benchmark code.
+</p>
 
 #for chart in items(charts):
 <h4><a class="soft" href="${chart.srcurl}">${chart.title}</a></h4>

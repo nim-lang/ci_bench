@@ -6,14 +6,14 @@ import os, strutils
 from benchutils import run_bench
 
 const
-    IM = 139968
-    IA = 3877
-    IC = 29573
+  IM = 139968
+  IA = 3877
+  IC = 29573
 
 const
-    LINE_LEN = 60
-    LOOKUP_SIZE = 4096
-    LOOKUP_SCALE = (LOOKUP_SIZE - 1).float
+  LINE_LEN = 60
+  LOOKUP_SIZE = 4096
+  LOOKUP_SCALE = (LOOKUP_SIZE - 1).float
 
 proc fwrite_unlocked(buf: pointer, size, n: int, stream: File): int
     {.cdecl, importc: "fwrite_unlocked", header: "<stdio.h>".}
@@ -22,82 +22,82 @@ proc fputc_unlocked(c: int, stream: File): int
 
 
 proc repeat(alu: var array[0..286, char], title: string, nb: int) =
-    var buf: array[0 .. alu.len + LINE_LEN, char]
-    var pos = 0
+  var buf: array[0 .. alu.len + LINE_LEN, char]
+  var pos = 0
 
-    copyMem(addr buf, addr alu, alu.len)
-    copyMem(cast[pointer](cast[int](addr buf) + alu.len),
-            addr alu, LINE_LEN)
+  copyMem(addr buf, addr alu, alu.len)
+  copyMem(cast[pointer](cast[int](addr buf) + alu.len),
+          addr alu, LINE_LEN)
 
-    discard fwrite_unlocked(cast[pointer](title.cstring),
-                            title.len, 1, stdout)
-    var n = nb
-    while n > 0:
-        let bytes = if n > LINE_LEN: LINE_LEN else: n
+  discard fwrite_unlocked(cast[pointer](title.cstring),
+                          title.len, 1, stdout)
+  var n = nb
+  while n > 0:
+    let bytes = if n > LINE_LEN: LINE_LEN else: n
 
-        discard fwrite_unlocked(cast[pointer]( cast[int](buf.addr) + pos),
-                                bytes, 1, stdout)
-        pos += bytes
-        if pos > alu.len:
-            pos -= alu.len
-        discard fputc_unlocked('\L'.int, stdout)
-        n -= bytes
+        discard fwrite_unlocked(cast[pointer](cast[int](buf.addr) + pos),
+                            bytes, 1, stdout)
+    pos += bytes
+    if pos > alu.len:
+      pos -= alu.len
+    discard fputc_unlocked('\L'.int, stdout)
+    n -= bytes
 
 type
-    AminoAcid = tuple[
-        sym: char,
-        prob, cprob_lookup: float
-    ]
-    LUT = array[0.. LOOKUP_SIZE - 1, ptr AminoAcid]
+  AminoAcid = tuple[
+      sym: char,
+      prob, cprob_lookup: float
+  ]
+  LUT = array[0 .. LOOKUP_SIZE - 1, ptr AminoAcid]
 
 proc random_next_lookup(random: ptr int): float
     {.noSideEffect, inline.} =
-    random[] = (random[] * IA + IC) mod IM
-    return random[].float * LOOKUP_SCALE / IM
+  random[] = (random[] * IA + IC) mod IM
+  return random[].float * LOOKUP_SCALE / IM
 
 proc fill_lookup(lookup: var LUT, amino_acid: var openarray[AminoAcid]) =
-    var p: float
-    for i in 0 .. <amino_acid.len:
-        p += amino_acid[i].prob
-        amino_acid[i].cprob_lookup = p*LOOKUP_SCALE
+  var p: float
+  for i in 0 .. <amino_acid.len:
+    p += amino_acid[i].prob
+    amino_acid[i].cprob_lookup = p*LOOKUP_SCALE
 
-        # prevent rounding error
-        amino_acid[amino_acid.len - 1].cprob_lookup = LOOKUP_SIZE - 1
+    # prevent rounding error
+    amino_acid[amino_acid.len - 1].cprob_lookup = LOOKUP_SIZE - 1
 
-        for i in 0 .. <LOOKUP_SIZE:
-            var j = 0
-            while amino_acid[j].cprob_lookup < i.float:
-                j += 1
-            lookup[i] = addr amino_acid[j]
+    for i in 0 .. <LOOKUP_SIZE:
+      var j = 0
+      while amino_acid[j].cprob_lookup < i.float:
+        j += 1
+      lookup[i] = addr amino_acid[j]
 
 proc randomize(amino_acid: var openarray[AminoAcid], title: string,
                n: int, rand: ptr int) =
-    var lookup: LUT
-    var line_buffer: array[0..LINE_LEN, char]
+  var lookup: LUT
+  var line_buffer: array[0..LINE_LEN, char]
 
-    line_buffer[LINE_LEN] = '\L'
+  line_buffer[LINE_LEN] = '\L'
 
-    fill_lookup(lookup, amino_acid)
+  fill_lookup(lookup, amino_acid)
 
-    discard fwrite_unlocked(cast[pointer](title.cstring),
-                            title.len, 1, stdout)
+  discard fwrite_unlocked(cast[pointer](title.cstring),
+                          title.len, 1, stdout)
 
-    var j = 0
-    for i in 0 .. <n:
-        if j == LINE_LEN:
-            discard fwrite_unlocked(line_buffer[0].addr,
-                                    line_buffer.len, 1, stdout)
-            j = 0
+  var j = 0
+  for i in 0 .. <n:
+    if j == LINE_LEN:
+      discard fwrite_unlocked(line_buffer[0].addr,
+                              line_buffer.len, 1, stdout)
+      j = 0
 
-        let r = random_next_lookup(rand)
-        var u = lookup[r.int16]
-        while u.cprob_lookup < r:
-            u = cast[ptr AminoAcid](cast[int](u) + sizeof(AminoAcid))
-        line_buffer[j] = u.sym
-        j += 1
+    let r = random_next_lookup(rand)
+    var u = lookup[r.int16]
+    while u.cprob_lookup < r:
+      u = cast[ptr AminoAcid](cast[int](u) + sizeof(AminoAcid))
+    line_buffer[j] = u.sym
+    j += 1
 
-    line_buffer[j] = '\L'
-    discard fwrite_unlocked(line_buffer[0].addr, j + 1, 1, stdout)
+  line_buffer[j] = '\L'
+  discard fwrite_unlocked(line_buffer[0].addr, j + 1, 1, stdout)
 
 const alu: cstring = "GGCCGGGCGCGGTGGCTCACGCCTGTAATCCCAGCACTTTG" &
    "GGAGGCCGAGGCGGGCGGATCACCTGAGGTCAGGAGTTCGA" &

@@ -1,7 +1,7 @@
 
 from times import epochTime
 
-template run_bench*(loop_num: int, body: stmt): stmt {.immediate.} =
+template run_bench*(loop_num: int, body: untyped): untyped =
   var best_time = -1.0
   for loop_cnt in 1..loop_num:
     let start_time = epochTime()

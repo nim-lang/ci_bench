@@ -1,6 +1,5 @@
-
 #
-# Run benchmarks, call deploy script
+# Run benchmarks
 #
 
 import os
@@ -8,6 +7,8 @@ import osproc
 import strutils
 import tables
 import times
+
+from generate_bench_page import gen_bench_page
 
 # the first argument is the commitish or the special value "test"
 
@@ -36,15 +37,17 @@ proc list_benchmarks(): seq[string] =
     result.add bench_name
   echo "Found $# benchmarks" % $result.len
 
-proc compile_benchmarks(bench_names: seq[string]) =
+proc compile_benchmarks(bench_names: seq[string]): seq[string] =
   echo "Compiling benchmarks"
   for bench_name in bench_names:
     echo "Compiling ", bench_name
-    discard execShellCmd("nim c -d:release $#" % bench_name)
+    let rc = execShellCmd("nim c -d:discard $#" % bench_name)
+    if rc == 0:
+      result.add bench_name
 
 proc run_benchmarks(commitish: string, bench_names: seq[string]) =
   var timings = initTable[string, float]()
-  let tstamp = getGmTime(getTime())
+  let tstamp = now().utc
 
   for cycle_cnt in 1..cycles:
     echo "Running cycle ", $cycle_cnt
@@ -80,13 +83,12 @@ if paramCount() > 0:
   commitish = paramStr(1)
 
 backup_timings()
-let bench_names = list_benchmarks()
-compile_benchmarks(bench_names)
-run_benchmarks(commitish, bench_names)
+let
+  bench_names = list_benchmarks()
+  compiled_bnames = compile_benchmarks(bench_names)
+run_benchmarks(commitish, compiled_bnames)
 
-discard execShellCmd("./generate_bench_page")
+gen_bench_page()
 
 if commitish == "test":
   restore_from_backup()
-else:
-  discard execShellCmd("./deploy")

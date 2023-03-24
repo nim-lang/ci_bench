@@ -2,6 +2,8 @@
 #
 # Run benchmarks and generate output page
 #
+# (c) 2023 Federico Ceratto - released under GPL-3.0
+#
 set -eu
 
 # test_mode: run a bench without checking for commits
@@ -18,17 +20,17 @@ if [[ ! -d $BENCHDIR ]]; then
     mkdir -p $BENCHDIR
     cd $BENCHDIR
     echo "Fetching and building Nim for the first time"
-    git clone git://github.com/nim-lang/Nim.git
+    git clone --depth 1 https://github.com/nim-lang/Nim.git
     cd Nim
-    git clone --depth 1 git://github.com/nim-lang/csources
-    cd csources
+    git clone --depth 1 https://github.com/nim-lang/csources_v2.git
+    cd csources_v2
     sh build.sh
     )
 fi
 
-[ -f generate_bench_page ] || "$BENCHDIR"/Nim/bin/nim c -d:release generate_bench_page.nim
+[ -f generate_bench_page ] || "$BENCHDIR"/Nim/bin/nim c generate_bench_page.nim
 
-[ -f run_benchmarks ] || "$BENCHDIR"/Nim/bin/nim c -d:release run_benchmarks.nim
+[ -f run_benchmarks ] || "$BENCHDIR"/Nim/bin/nim c -mm:arc -d:danger run_benchmarks.nim
 
 cd $BENCHDIR
 cd Nim
@@ -37,14 +39,13 @@ LOCAL_COMMITTISH=$(git rev-parse HEAD)
 REMOTE_COMMITTISH=$(git rev-parse @{u})
 
 if [ "$test_mode" = false ]; then
-
+    echo "checking commit"
     [[ $LOCAL_COMMITTISH == $REMOTE_COMMITTISH ]] && exit 0
-
+    echo "pulling changes"
     git pull
-    cd csources
-    git pull
-
-    sh build.sh
+    ./bin/nim c koch.nim
+     nim c koch.nim
+     ./koch boot -d:release
 fi
 
 rm $BENCHSRC/nimcache -rf
