@@ -102,13 +102,13 @@ Click on the benchmark title to see the benchmark code.
 #for chart in items(charts):
 <h4><a class="soft" href="${chart.srcurl}">${chart.title}</a></h4>
 <div class="minichart">
-  #for row in chart.rows:
-  <a class="minicol" href="https://github.com/nim-lang/Nim/commit/${row.github_commit}">
-    <div class="minicol" style="height:${row.height}px;">
+  #for bar in chart.bars:
+  <a class="minicol" href="https://github.com/nim-lang/Nim/commit/${bar.github_commit}">
+    <div class="minicol" style="height:${bar.height}px;">
       <div class="tip">
-        ${row.date}
+        ${bar.date}
         <br/>
-        ${row.value}
+        ${bar.value}
       </div>
     </div>
   </a>
