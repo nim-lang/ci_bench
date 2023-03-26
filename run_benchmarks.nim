@@ -7,8 +7,9 @@ import strutils
 import tables
 import times
 
-import std/[db_sqlite, posix_utils, tempfiles, sequtils]
+import std/[posix_utils, tempfiles, sequtils]
 import std/strformat
+import db_connector/db_sqlite
 
 
 const

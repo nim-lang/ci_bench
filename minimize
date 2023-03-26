@@ -9,6 +9,7 @@ ci_bench() {
   # Assume Nim is already built and valgrind is available and that
   # this is running in CI for a PR or on devel
   echo "Running benchmarks under CI"
+  nimble install -y db_connector
   nim c run_benchmarks.nim
   ./run_benchmarks bench
 }
