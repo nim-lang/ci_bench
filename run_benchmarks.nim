@@ -9,7 +9,11 @@ import times
 
 import std/[posix_utils, tempfiles, sequtils]
 import std/strformat
-import db_connector/db_sqlite
+
+when defined(nim1):
+  import std/db_sqlite
+else:
+  import db_connector/db_sqlite
 
 
 const
@@ -29,15 +33,23 @@ proc list_benchmarks(): seq[string] =
 proc bfname(bench_name: string): string =
   benchmarks_dir / bench_name & ".nim"
 
+proc exec(cmd: string, workdir = ""): string {.discardable.} =
+  let r = execCmdEx(cmd, workingDir = workdir)
+  if r.exitCode != 0:
+    echo &"#### ERROR executing {cmd} ####"
+    echo r.output
+    echo "---------------------"
+    raise newException(CatchableError, "command failed")
+  return r.output
 
 # # Benchmarking # #
 
 proc compile_benchmarks(bench_names: seq[string]): seq[string] =
   echo "Compiling benchmarks"
   for bench_name in bench_names:
-    echo "Compiling ", bench_name
-    let rc = execShellCmd("nim c -d:danger $#" % bench_name.bfname)
-    if rc == 0:
+    echo " Compiling ", bench_name
+    let r = execCmdEx("nim c -d:danger $#" % bench_name.bfname)
+    if r.exitCode == 0:
       result.add bench_name
     else:
       echo &"Failed to compile {bench_name.bfname}, skipping it"
@@ -79,14 +91,15 @@ proc run_under_cachegrind(bench_fname: string): CC =
       "--cachegrind-out-file=" & tmp_fname,
       bench_fname
     ]
-    rv = execCmd(cmd.join(" "))
-  if rv == 0:
+    r = execCmdEx(cmd.join(" "))
+  if r.exitCode == 0:
     result = parse_cachegrind_output(tmpfile)
     removeFile(tmp_fname)
 
 type
   Summary = tuple[l1_hits, l3_hits, ram_hits, score: int]
-  Datapoint = tuple[commitish: string, commit_epoch: int, os, architecture, bench_name: string, l1_hits, l3_hits, ram_hits, score: int]
+  Datapoint = tuple[commitish: string, commit_epoch: int, os, architecture,
+      bench_name: string, l1_hits, l3_hits, ram_hits, score: int]
   Datapoints = seq[Datapoint]
 
 proc extract_score(d: CC): Summary =
@@ -104,7 +117,8 @@ proc extract_score(d: CC): Summary =
 
   (l1_hits, l3_hits, ram_hits, score)
 
-proc run_benchmarks(commitish: string, commit_epoch: int, bench_names: seq[string]): Datapoints =
+proc run_benchmarks(commitish: string, commit_epoch: int, bench_names: seq[
+    string]): Datapoints =
   result = @[]
   #let tstamp = now().utc
   for bench_name in bench_names:
@@ -116,7 +130,8 @@ proc run_benchmarks(commitish: string, commit_epoch: int, bench_names: seq[strin
         (l1_hits, l3_hits, ram_hits, score) = extract_score(stats)
         os = "linux"
         architecture = uname().machine
-      result.add (commitish, commit_epoch, os, architecture, bench_name, l1_hits, l3_hits, ram_hits, score)
+      result.add (commitish, commit_epoch, os, architecture, bench_name,
+          l1_hits, l3_hits, ram_hits, score)
 
     except:
       echo "Unhandled error"
@@ -143,12 +158,12 @@ const
   insertsql = sql(&"INSERT INTO minimize ({rowsql}) VALUES (?, ?, ?, ?,  ?, ?, ?, ?, ?)")
 
 proc write_tmp_db(rows: Datapoints) =
-  echo &"Reading "
   let db = open(tmpdb_fn, "", "", "")
   db.exec(create_tbl)
   for row in rows:
     let id = db.insertID(insertsql,
-      row.commitish, row.commit_epoch, row.os, row.architecture, row.bench_name, row.l1_hits, row.l3_hits, row.ram_hits, row.score
+      row.commitish, row.commit_epoch, row.os, row.architecture, row.bench_name,
+      row.l1_hits, row.l3_hits, row.ram_hits, row.score
     )
   db.close()
   echo &"{tmpdb_fn} written"
@@ -179,7 +194,7 @@ type
     srcurl*: string
     bars*: seq[ChartBar]
 
-include "bench_page.tmpl"  # provides generateHTMLPage
+include "bench_page.tmpl" # provides generateHTMLPage
 
 proc generate_chart(bench_name: string, dps: Datapoints): Chart =
   var barcnt = 0
@@ -236,18 +251,65 @@ proc bench() =
       if paramCount() > 1:
         paramStr(2)
       else:
-        execProcess("git rev-parse HEAD").strip
+        exec("git rev-parse HEAD").strip
 
     commit_epoch =
       if paramCount() > 2:
         paramStr(3).parseInt
       else:
-        execProcess("""git --no-pager log -1 --format="%at" """).strip.parseInt
+        exec("""git --no-pager log -1 --format="%at" """).strip.parseInt
 
     bench_names = list_benchmarks()
     compiled_bnames = compile_benchmarks(bench_names)
     outcome = run_benchmarks(commitish, commit_epoch, compiled_bnames)
   write_tmp_db(outcome)
+
+
+iterator sample(li: seq[string], samples: int): (string, int) =
+  let jump = int(li.len / samples)
+  for n in 0..<samples:
+    let x = li[n * jump].split
+    yield (x[0], x[1].parseInt)
+
+  let x = li[li.high].split
+  yield (x[0], x[1].parseInt)
+
+
+proc rebuild_db() =
+  # Assume minimize is being run from its own repo checked out under the
+  # Nim repo
+  let
+    since = "2022-06-01"
+    samples = 20 #FIXME
+    cmd = &"git log --format='%H %at' --since='{since}'"
+    li = exec(cmd, workdir = "../").strip.splitLines
+    bench_names = list_benchmarks()
+    mdir = getCurrentDir()
+
+  echo &"{li.len} Nim commits listed"
+  var cnt = 0
+  for commitish, commit_epoch in sample(li, samples):
+    echo &"\n### Building Nim {commitish} {commit_epoch} ###\n"
+    try:
+      setCurrentDir(mdir)
+      setCurrentDir("../")
+      exec(&"git checkout {commitish}")
+      echo "Compiling koch"
+      exec("./bin/nim c koch",)
+      echo "Compiling nim"
+      exec("./koch boot -d:release -d:nimStrictMode --lib:lib")
+      echo "Nim compiler ready"
+      setCurrentDir(mdir)
+      let compiled_bnames = compile_benchmarks(bench_names)
+      let outcome = run_benchmarks(commitish, commit_epoch, compiled_bnames)
+      write_tmp_db(outcome)
+      inc cnt
+    except:
+      echo "Run failed, ignoring it"
+
+  setCurrentDir(mdir)
+  discard exec("git checkout devel", workdir = "../")
+  echo &"completed {cnt} samples out of {samples+1}"
 
 
 when isMainModule:
@@ -268,6 +330,9 @@ when isMainModule:
     of "generate-report":
       let bench_names = list_benchmarks()
       gen_bench_page(bench_names)
+
+    of "rebuild-db":
+      rebuild_db()
 
     else:
       echo "Usage: [bench|update-db|generate-report]"
