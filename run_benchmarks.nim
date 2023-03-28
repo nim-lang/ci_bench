@@ -215,7 +215,6 @@ proc generate_chart(bench_name: string, dps: Datapoints): Chart =
 
 
 proc generate_charts(bench_names: seq[string], db: DbConn): seq[Chart] =
-
   const q = sql(&"""
     SELECT {rowsql} FROM minimize WHERE bench_name = ?
   """)
@@ -241,6 +240,38 @@ proc gen_bench_page*(bench_names: seq[string]) =
   echo "Writing output to minimize.html"
   let f = open("minimize.html", fmWrite)
   f.writeLine(page)
+
+
+proc gen_table*(bench_names: seq[string]) =
+  echo &"Reading {db_fn}"
+  let db = open(db_fn, "", "", "")
+  const q = sql(&"""
+    SELECT {rowsql} FROM minimize WHERE bench_name = ?
+  """)
+  const fn = "summary.md"
+  var tbl: seq[string] = @[
+    "| Bench name             | Change                |",
+    "| ---                    | ---                   |",
+  ]
+  for bench_name in bench_names:
+    var prev: Datapoint
+    var last: Datapoint
+    for row in db.rows(q, bench_name):
+      prev = last
+      last = (row[0], row[1].parseInt, row[2], row[3],
+          row[4], row[5].parseInt, row[6].parseInt, row[7].parseInt, row[8].parseInt)
+    let change = (last.score - prev.score) / prev.score * 100
+    if change > 1:
+      tbl.add &"| {bench_name:22} | {change:8.2f}% slowdown    |"
+    elif change < -1:
+      tbl.add &"| {bench_name:22} | {-change:8.2f}% improvement |"
+
+  echo &"Writing {fn}"
+  if tbl.len > 2:
+    fn.write_file(tbl.join("\n") & "\n")
+  else:
+    fn.write_file("No significant performance changes\n")
+
 
 
 # # main # #
@@ -295,7 +326,7 @@ proc rebuild_db() =
       setCurrentDir("../")
       exec(&"git checkout {commitish}")
       echo "Compiling koch"
-      exec("./bin/nim c koch",)
+      exec("./bin/nim c koch", )
       echo "Compiling nim"
       exec("./koch boot -d:release -d:nimStrictMode --lib:lib")
       echo "Nim compiler ready"
@@ -330,6 +361,7 @@ when isMainModule:
     of "generate-report":
       let bench_names = list_benchmarks()
       gen_bench_page(bench_names)
+      gen_table(bench_names)
 
     of "rebuild-db":
       rebuild_db()
