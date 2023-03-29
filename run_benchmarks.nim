@@ -7,20 +7,15 @@ import strutils
 import tables
 import times
 
-import std/[posix_utils, tempfiles, sequtils]
+import std/[posix_utils, tempfiles, sequtils, parsecsv]
 import std/strformat
-
-when defined(nim1):
-  import std/db_sqlite
-else:
-  import db_connector/db_sqlite
 
 
 const
   benchmarks_dir = "benchmarks"
   bench_glob = benchmarks_dir.join_path("*.nim")
-  db_fn = "minimize.sqlite"
-  tmpdb_fn = "minimize.tmp.sqlite"
+  db_fn = "minimize.csv"
+  tmpdb_fn = "minimize.tmp.csv"
 
 proc list_benchmarks(): seq[string] =
   # List benchmarks without dir name and extension
@@ -139,48 +134,54 @@ proc run_benchmarks(commitish: string, commit_epoch: int, bench_names: seq[
 
 # # DB # #
 
-const
-  create_tbl = sql"""
-    CREATE TABLE IF NOT EXISTS minimize (
-      commitish VARCHAR(50),
-      commit_epoch INTEGER,
-      os VARCHAR(32) NOT NULL,
-      architecture VARCHAR(32) NOT NULL,
-      bench_name VARCHAR(50) NOT NULL,
-      bench_datetime DATETIME DEFAULT CURRENT_TIMESTAMP,
-      l1_hits INTEGER,
-      l3_hits INTEGER,
-      ram_hits INTEGER,
-      score INTEGER
-    )
-  """
-  rowsql = "commitish, commit_epoch, os, architecture, bench_name, l1_hits, l3_hits, ram_hits, score"
-  insertsql = sql(&"INSERT INTO minimize ({rowsql}) VALUES (?, ?, ?, ?,  ?, ?, ?, ?, ?)")
+const hdr = "commitish,commit_epoch,os,architecture,bench_name,bench_datetime,l1_hits,l3_hits,ram_hits,score"
 
-proc write_tmp_db(rows: Datapoints) =
-  let db = open(tmpdb_fn, "", "", "")
-  db.exec(create_tbl)
-  for row in rows:
-    let id = db.insertID(insertsql,
-      row.commitish, row.commit_epoch, row.os, row.architecture, row.bench_name,
-      row.l1_hits, row.l3_hits, row.ram_hits, row.score
-    )
-  db.close()
-  echo &"{tmpdb_fn} written"
+func to_line(row: Datapoint): string =
+  [row.commitish, $row.commit_epoch, row.os, row.architecture, row.bench_name,
+      $row.l1_hits, $row.l3_hits, $row.ram_hits, $row.score].join(",") & "\n"
+
+iterator db_scan(fn: string, bench_name: string): Datapoint =
+  var p: CsvParser
+  p.open(fn)
+  p.readHeaderRow()
+  assert p.headers == hdr.split(',')
+  while p.readRow():
+    #for col in items(p.headers):
+    #  echo "##", col, ":", p.rowEntry(col), "##"
+    let row = p.row
+    let dp: Datapoint = (row[0], row[1].parseInt, row[2], row[3],
+          row[4], row[5].parseInt, row[6].parseInt, row[7].parseInt, row[8].parseInt)
+    if bench_name == "" or bench_name == dp.bench_name:
+      yield dp
+
+  p.close()
+
+proc write_tmp_db(dps: Datapoints) =
+  let f = open(tmpdb_fn, fmWrite)
+  var cnt = 0
+  f.write(hdr & "\n")
+  for dp in dps:
+    f.write(dp.to_line())
+    inc cnt
+
+  f.close()
+  echo &"{tmpdb_fn} written. {cnt} datapoints"
 
 proc update_db() =
   ## Append data from tmp db to persistent db
+  let outf = open(db_fn, fmAppend)
+  if outf.getFilePos() == 0:
+    outf.write(hdr & "\n")
+  var cnt = 0
   echo &"Reading {tmpdb_fn}"
-  let tmpdb = open(tmpdb_fn, "", "", "")
-  let db = open(db_fn, "", "", "")
-  db.exec(create_tbl)
-  for x in tmpdb.rows(sql(&"SELECT {rowsql} FROM minimize")):
-    let id = db.insertID(insertsql, x)
+  for dp in db_scan(tmpdb_fn, ""):
+    outf.write(dp.to_line())
+    inc cnt
 
-  db.close()
-  tmpdb.close()
-  echo &"{db_fn} written"
+  outf.close()
+  echo &"{db_fn} written. {cnt} new datapoints"
   # removeFile(tmpdb_fn)
+
 
 
 # # Charting # #
@@ -214,17 +215,9 @@ proc generate_chart(bench_name: string, dps: Datapoints): Chart =
   return c
 
 
-proc generate_charts(bench_names: seq[string], db: DbConn): seq[Chart] =
-  const q = sql(&"""
-    SELECT {rowsql} FROM minimize WHERE bench_name = ?
-  """)
+proc generate_charts(bench_names: seq[string]): seq[Chart] =
   for bench_name in bench_names:
-    var dps: Datapoints = @[]
-    for row in db.rows(q, bench_name):
-      let x: Datapoint = (row[0], row[1].parseInt, row[2], row[3],
-          row[4], row[5].parseInt, row[6].parseInt, row[7].parseInt, row[8].parseInt)
-      dps.add x
-
+    let dps = toSeq db_scan(db_fn, bench_name)
     echo &"Fetched data for {bench_name}: {dps.len} datapoints"
 
     let c = generate_chart(bench_name, dps)
@@ -232,10 +225,9 @@ proc generate_charts(bench_names: seq[string], db: DbConn): seq[Chart] =
 
 proc gen_bench_page*(bench_names: seq[string]) =
   echo &"Reading {db_fn}"
-  let db = open(db_fn, "", "", "")
   let tstamp = $now().utc
   let
-    charts = generate_charts(bench_names, db)
+    charts = generate_charts(bench_names)
     page = generateHTMLPage(charts, tstamp)
   echo "Writing output to minimize.html"
   let f = open("minimize.html", fmWrite)
@@ -244,23 +236,19 @@ proc gen_bench_page*(bench_names: seq[string]) =
 
 proc gen_table*(bench_names: seq[string]) =
   echo &"Reading {db_fn}"
-  let db = open(db_fn, "", "", "")
-  const q = sql(&"""
-    SELECT {rowsql} FROM minimize WHERE bench_name = ?
-  """)
   const fn = "summary.md"
   var tbl: seq[string] = @[
     "| Bench name             | Change                |",
     "| ---                    | ---                   |",
   ]
   for bench_name in bench_names:
-    var prev: Datapoint
-    var last: Datapoint
-    for row in db.rows(q, bench_name):
-      prev = last
-      last = (row[0], row[1].parseInt, row[2], row[3],
-          row[4], row[5].parseInt, row[6].parseInt, row[7].parseInt, row[8].parseInt)
-    let change = (last.score - prev.score) / prev.score * 100
+    let dps = toSeq db_scan(db_fn, bench_name)
+    if dps.len < 2:
+      continue
+    let
+      last = dps[dps.high]
+      prev = dps[dps.high-1]
+      change = (last.score - prev.score) / prev.score * 100
     if change > 1:
       tbl.add &"| {bench_name:22} | {change:8.2f}% slowdown    |"
     elif change < -1:

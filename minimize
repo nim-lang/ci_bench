@@ -9,7 +9,6 @@ ci_bench() {
   # Assume Nim is already built and valgrind is available and that
   # this is running in CI for a PR or on devel
   echo "Running benchmarks under CI"
-  nimble install -y db_connector
   nim c run_benchmarks.nim
   ./run_benchmarks bench
 }
@@ -20,15 +19,7 @@ case "${1-help}" in
   ci-bench)
     ci_bench;;
 
-  update-db)
-    ./run_benchmarks update-db
-    ;;
-
-  generate-report)
-    ./run_benchmarks generate-report
-    ;;
-
   *)
-    echo "Use: $0 [ci-bench|update-db|generate-report]"
+    ./run_benchmarks $@
     ;;
 esac
